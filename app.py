@@ -1,12 +1,12 @@
 from flask import Flask, request, jsonify, render_template_string
 import uuid
 import time
-import os
 
 app = Flask(__name__)
 
-# Store tokens
+# Store tokens and HTML in memory
 tokens = {}
+pages = {}
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -21,11 +21,12 @@ HTML_TEMPLATE = """
         <h2>Solve Turnstile</h2>
         <div class="cf-turnstile" data-sitekey="{{ sitekey }}" data-callback="onSubmit"></div>
         <p id="status">Waiting for solve...</p>
+        <p><small>Session: {{ session_id }}</small></p>
     </div>
     <script>
         function onSubmit(token) {
             document.getElementById('status').innerHTML = 'Solved! Token: ' + token.substring(0, 30) + '...';
-            fetch('/submit-token', {
+            fetch(window.location.origin + '/submit-token', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -44,7 +45,7 @@ def home():
     return jsonify({
         "service": "Turnstile Solver",
         "endpoints": {
-            "solve": "POST /solve with {sitekey, pageurl}",
+            "solve": "POST /solve with {sitekey}",
             "get-token": "GET /get-token/{session_id}"
         }
     })
@@ -63,9 +64,7 @@ def solve():
     html = HTML_TEMPLATE.replace('{{ sitekey }}', sitekey)
     html = html.replace('{{ session_id }}', session_id)
     
-    # Save to file
-    with open(f"turnstile_{session_id}.html", 'w') as f:
-        f.write(html)
+    pages[session_id] = html
     
     return jsonify({
         "status": "waiting",
@@ -75,11 +74,10 @@ def solve():
 
 @app.route('/view/<session_id>')
 def view(session_id):
-    try:
-        with open(f"turnstile_{session_id}.html", 'r') as f:
-            return f.read()
-    except:
-        return "Session expired", 404
+    html = pages.get(session_id)
+    if html:
+        return html
+    return "Session expired or invalid", 404
 
 @app.route('/submit-token', methods=['POST'])
 def submit_token():
